@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1072528136717",
+    "firebase_url": "https://intenship-log-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "intenship-log",
+    "storage_bucket": "intenship-log.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1072528136717:android:d45d4eabc023a3d0161344",
+        "android_client_info": {
+          "package_name": "com.example.intenship_log"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1072528136717-gd6cc9lt7e1suuvlerdo2l7182ccfqb9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.intenship_log",
+            "certificate_hash": "d6d5f42643448f21a0c0bdf37b1055aa65a6b54b"
+          }
+        },
+        {
+          "client_id": "1072528136717-qg72ir5hkfif4pcuf4ltg03bdus5u5p1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBZie1bV0HLFQzXGwI4gZNu4Lm0iL41My0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1072528136717-qg72ir5hkfif4pcuf4ltg03bdus5u5p1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
