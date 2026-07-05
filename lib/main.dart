@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,12 +19,12 @@ class InternshipTrackerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'InternSync Pro Matrix',
+      title: 'InternSync Pro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF4F46E5),
-        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        colorSchemeSeed: const Color(0xFF0EA5E9),
+        scaffoldBackgroundColor: const Color(0xFF0EA5E9),
       ),
       home: const AuthGateway(),
     );
@@ -39,33 +40,16 @@ class AuthGateway extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
         if (authSnapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator()));
         }
         if (authSnapshot.hasData && authSnapshot.data != null) {
           return StreamBuilder<UserModel?>(
             stream: FirebaseService().streamUserProfile(authSnapshot.data!.uid),
             builder: (context, roleSnapshot) {
               if (roleSnapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator()));
               }
-              if (roleSnapshot.hasError) {
-                return Scaffold(
-                  body: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                        const SizedBox(height: 16),
-                        Text('Account Error: ${roleSnapshot.error}'),
-                        TextButton(
-                          onPressed: () => FirebaseAuth.instance.signOut(),
-                          child: const Text('Return to Login'),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
+              
               if (roleSnapshot.hasData && roleSnapshot.data != null) {
                 final user = roleSnapshot.data!;
                 if (user.role == 'student' &&
@@ -78,33 +62,119 @@ class AuthGateway extends StatelessWidget {
                     ? MentorDashboard(mentor: user)
                     : StudentDashboard(student: user);
               }
-              return Scaffold(
-                body: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.account_circle_outlined, size: 80, color: Color(0xFF4F46E5)),
-                        const SizedBox(height: 24),
-                        const Text('Complete Your Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 12),
-                        const Text('We found your login, but your profile details are missing.', textAlign: TextAlign.center),
-                        const SizedBox(height: 32),
-                        ElevatedButton(
-                          onPressed: () => FirebaseAuth.instance.signOut(),
-                          child: const Text('Go to Registration Screen'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
+              
+              return RoleSelectionScreen(firebaseUser: authSnapshot.data!);
             },
           );
         }
         return const LoginRegisterScreen();
       },
+    );
+  }
+}
+
+class RoleSelectionScreen extends StatelessWidget {
+  final User firebaseUser;
+  const RoleSelectionScreen({super.key, required this.firebaseUser});
+
+  @override
+  Widget build(BuildContext context) {
+    final ds = FirebaseService();
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0EA5E9), Color(0xFF0284C7), Color(0xFF0369A1)],
+          ),
+        ),
+        child: Stack(
+          children: [
+            CustomPaint(painter: BackgroundPainter(), size: Size.infinite),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 40),
+                    const Icon(Icons.account_tree_outlined, size: 80, color: Colors.white),
+                    const SizedBox(height: 24),
+                    const Text('Select Your Workspace Identity', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white)),
+                    const SizedBox(height: 12),
+                    const Text('To configure your dashboard, please specify your role.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 16)),
+                    const Spacer(),
+                    _roleCard(
+                      context,
+                      title: 'Student / Intern',
+                      desc: 'Log daily activities and track hours.',
+                      icon: Icons.school_rounded,
+                      onTap: () async {
+                        await ds.updateProfile(firebaseUser.uid, {
+                          'name': firebaseUser.displayName ?? 'New Student',
+                          'email': firebaseUser.email,
+                          'role': 'student',
+                          'mentorIds': [],
+                        });
+                      }
+                    ),
+                    const SizedBox(height: 20),
+                    _roleCard(
+                      context,
+                      title: 'Mentor / Supervisor',
+                      desc: 'Review intern logs and provide feedback.',
+                      icon: Icons.admin_panel_settings_rounded,
+                      onTap: () async {
+                        await ds.updateProfile(firebaseUser.uid, {
+                          'name': firebaseUser.displayName ?? 'New Mentor',
+                          'email': firebaseUser.email,
+                          'role': 'mentor',
+                          'mentorIds': [],
+                        });
+                      }
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _roleCard(BuildContext context, {required String title, required String desc, required IconData icon, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(20),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+              child: Icon(icon, color: const Color(0xFF0EA5E9), size: 32),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(desc, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -121,6 +191,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   final _nameController = TextEditingController();
   final _mentorIdController = TextEditingController();
   bool isLogin = true;
+  bool savePassword = true;
   String selectedRole = 'student';
   final FirebaseService _authService = FirebaseService();
 
@@ -173,46 +244,196 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF4F46E5), Color(0xFFEC4899)])),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0EA5E9), Color(0xFF0284C7), Color(0xFF0369A1)],
+          ),
+        ),
+        child: Stack(
+          children: [
+            CustomPaint(painter: BackgroundPainter(), size: Size.infinite),
+            Positioned(
+              top: 50,
+              left: 24,
+              child: Row(
+                children: const [
+                  Icon(Icons.auto_graph_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'intenship_log',
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
+            ),
+            SafeArea(
+              child: SingleChildScrollView(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(isLogin ? 'Login' : 'Register', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 24),
-                    if (!isLogin) ...[
-                      TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Name')),
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedRole,
-                        items: const [
-                          DropdownMenuItem(value: 'student', child: Text('Student')),
-                          DropdownMenuItem(value: 'mentor', child: Text('Mentor')),
+                    const SizedBox(height: 60),
+                    const Text('Hello', style: TextStyle(color: Colors.white, fontSize: 44, fontWeight: FontWeight.w900)),
+                    const Text('Welcome Back!', style: TextStyle(color: Colors.white70, fontSize: 24, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 40),
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 20, offset: const Offset(0, 10)),
                         ],
-                        onChanged: (v) => setState(() => selectedRole = v!),
                       ),
-                      if (selectedRole == 'student') TextField(controller: _mentorIdController, decoration: const InputDecoration(labelText: 'Mentor ID')),
-                    ],
-                    TextField(controller: _emailController, decoration: const InputDecoration(labelText: 'Email')),
-                    TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
-                    if (isLogin) TextButton(onPressed: _handleForgotPassword, child: const Text('Forgot Password?')),
-                    const SizedBox(height: 24),
-                    ElevatedButton(onPressed: _handleSubmit, child: Text(isLogin ? 'Login' : 'Register')),
-                    const Divider(height: 48),
-                    ElevatedButton.icon(icon: const Icon(Icons.g_mobiledata), label: const Text('Google Sign In'), onPressed: _handleGoogleSignIn),
-                    TextButton(onPressed: () => setState(() => isLogin = !isLogin), child: Text(isLogin ? 'Need account?' : 'Have account?')),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: Column(
+                              children: [
+                                Text(isLogin ? 'Login Account' : 'Join Us', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.black)),
+                                const SizedBox(height: 8),
+                                const Text('Enter your details below to securely access your workspace.', textAlign: TextAlign.center, style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          if (!isLogin) ...[
+                            _label('Full Name'),
+                            _textField(_nameController, 'Enter Name', Icons.person),
+                            const SizedBox(height: 20),
+                            _label('Workspace Role'),
+                            DropdownButtonFormField<String>(
+                              initialValue: selectedRole,
+                              items: const [
+                                DropdownMenuItem(value: 'student', child: Text('Student')),
+                                DropdownMenuItem(value: 'mentor', child: Text('Mentor')),
+                              ],
+                              onChanged: (v) => setState(() => selectedRole = v!),
+                              decoration: _inputDecoration('').copyWith(
+                                suffixIcon: const Icon(Icons.admin_panel_settings, color: Colors.grey),
+                              ),
+                            ),
+                            if (selectedRole == 'student') ...[
+                              const SizedBox(height: 20),
+                              _label('Supervisor Key'),
+                              _textField(_mentorIdController, 'Enter Mentor ID', Icons.vpn_key),
+                            ],
+                            const SizedBox(height: 20),
+                          ],
+                          _label('Email Address'),
+                          _textField(_emailController, 'Your Email Address', Icons.person),
+                          const SizedBox(height: 20),
+                          _label('Password'),
+                          _textField(_passwordController, '••••••••••••', Icons.lock, obscure: true),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  SizedBox(
+                                    height: 24,
+                                    width: 24,
+                                    child: Checkbox(
+                                      value: savePassword,
+                                      activeColor: Colors.green,
+                                      shape: const CircleBorder(),
+                                      onChanged: (v) => setState(() => savePassword = v!),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text('Save Password', style: TextStyle(color: Colors.black87, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              if (isLogin)
+                                GestureDetector(
+                                  onTap: _handleForgotPassword,
+                                  child: const Text('Forgot Password?', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, decoration: TextDecoration.underline)),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 32),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: _handleSubmit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFFDBA74),
+                                foregroundColor: Colors.black,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                              ),
+                              child: Text(isLogin ? 'Login Account' : 'Save & Continue', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Center(
+                            child: GestureDetector(
+                              onTap: () => setState(() => isLogin = !isLogin),
+                              child: Text(isLogin ? 'Create New Account' : 'Back to Login', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 14)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    if (isLogin)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: OutlinedButton.icon(
+                          onPressed: _handleGoogleSignIn,
+                          icon: const Icon(Icons.g_mobiledata, size: 28),
+                          label: const Text('Connect with Google'),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(double.infinity, 50),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            side: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 40),
                   ],
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _label(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(text, style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w900)),
+    );
+  }
+
+  Widget _textField(TextEditingController controller, String hint, IconData icon, {bool obscure = false}) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: _inputDecoration(hint).copyWith(
+        suffixIcon: Icon(icon, color: Colors.grey, size: 20),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+      filled: true,
+      fillColor: const Color(0xFFF8FAFC),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey[200]!)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey[200]!)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF0EA5E9))),
     );
   }
 }
@@ -232,31 +453,80 @@ class _FinalizeProfileScreenState extends State<FinalizeProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Finalize Profile', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              TextField(controller: _companyController, decoration: const InputDecoration(labelText: 'Company')),
-              TextField(controller: _locationController, decoration: const InputDecoration(labelText: 'Location')),
-              TextField(controller: _specController, decoration: const InputDecoration(labelText: 'Domain')),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () async {
-                  await _db.updateProfile(widget.user.uid, {
-                    'company': _companyController.text,
-                    'location': _locationController.text,
-                    'specialization': _specController.text,
-                  });
-                },
-                child: const Text('Save'),
-              ),
-            ],
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0EA5E9), Color(0xFF0284C7), Color(0xFF0369A1)],
           ),
+        ),
+        child: Stack(
+          children: [
+            CustomPaint(painter: BackgroundPainter(), size: Size.infinite),
+            Center(
+              child: SingleChildScrollView(
+                child: Container(
+                  margin: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Finalize Profile', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 12),
+                      const Text('Just a few more details to set up your workspace.', textAlign: TextAlign.center, style: TextStyle(color: Colors.blueGrey)),
+                      const SizedBox(height: 32),
+                      TextField(controller: _companyController, decoration: const InputDecoration(labelText: 'Company / Organization')),
+                      const SizedBox(height: 16),
+                      TextField(controller: _locationController, decoration: const InputDecoration(labelText: 'Office Location')),
+                      const SizedBox(height: 16),
+                      TextField(controller: _specController, decoration: const InputDecoration(labelText: 'Domain / Specialization')),
+                      const SizedBox(height: 40),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            await _db.updateProfile(widget.user.uid, {'company': _companyController.text, 'location': _locationController.text, 'specialization': _specController.text});
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFDBA74), foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+                          child: const Text('Save & Enter Workspace', style: TextStyle(fontWeight: FontWeight.w900)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+class BackgroundPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+    paint.color = Colors.white.withAlpha(25);
+    paint.strokeWidth = 0.5;
+    for (double i = 0; i < size.width; i += 40) {
+      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
+    }
+    for (double i = 0; i < size.height; i += 40) {
+      canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
+    }
+    paint.shader = const LinearGradient(colors: [Colors.white24, Colors.transparent], begin: Alignment.topLeft, end: Alignment.bottomRight).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawCircle(Offset(size.width * 0.1, size.height * 0.2), 150, paint);
+    canvas.drawCircle(Offset(size.width * 0.9, size.height * 0.8), 250, paint);
+    paint.shader = RadialGradient(colors: [Colors.white.withAlpha(40), Colors.transparent]).createShader(Rect.fromCircle(center: Offset(size.width * 0.5, size.height * 0.1), radius: 200));
+    canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.1), 200, paint);
+    paint.shader = RadialGradient(colors: [Colors.white.withAlpha(30), Colors.transparent]).createShader(Rect.fromCircle(center: Offset(size.width * 0.8, size.height * 0.4), radius: 180));
+    canvas.drawCircle(Offset(size.width * 0.8, size.height * 0.4), 180, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

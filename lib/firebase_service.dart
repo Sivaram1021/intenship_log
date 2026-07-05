@@ -45,19 +45,6 @@ class FirebaseService {
       );
 
       final UserCredential userCredential = await _auth.signInWithCredential(credential);
-      
-      // Check if user exists in Firestore
-      final userDoc = await _db.collection('users').doc(userCredential.user!.uid).get();
-      if (!userDoc.exists) {
-        UserModel newUser = UserModel(
-          uid: userCredential.user!.uid,
-          name: userCredential.user!.displayName ?? 'New User',
-          email: userCredential.user!.email ?? '',
-          role: 'student', // Default
-          mentorIds: [],
-        );
-        await _db.collection('users').doc(userCredential.user!.uid).set(newUser.toMap());
-      }
       return userCredential;
     } catch (e) {
       rethrow;
