@@ -281,32 +281,43 @@ class _StudentDashboardState extends State<StudentDashboard> {
             child: Text('No targets in this category.', style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontStyle: FontStyle.italic)),
           )
         else
-          ...taskList.map((task) => Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.blueGrey[50]!),
-            ),
-            child: Row(
-              children: [
-                Icon(isCompleted ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, 
-                  color: isCompleted ? Colors.green : Colors.blueGrey),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(task.title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, 
-                        decoration: isCompleted ? TextDecoration.lineThrough : null, color: const Color(0xFF1E293B))),
-                      const SizedBox(height: 4),
-                      Text(isCompleted ? 'Approved by Supervisor' : 'Due: ${DateFormat('MMMM dd, yyyy').format(task.dueDate)}', 
-                        style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
-                    ],
+          ...taskList.map((task) => InkWell(
+            onTap: isCompleted ? null : () async {
+              await _ds.updateTaskStatus(task.id, 'completed');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('✅ Task marked as completed. Milestone updated.'))
+                );
+              }
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.blueGrey[50]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(isCompleted ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, 
+                    color: isCompleted ? Colors.green : Colors.blueGrey),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(task.title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, 
+                          decoration: isCompleted ? TextDecoration.lineThrough : null, color: const Color(0xFF1E293B))),
+                        const SizedBox(height: 4),
+                        Text(isCompleted ? 'Approved by Supervisor' : 'Due: ${DateFormat('MMMM dd, yyyy').format(task.dueDate)}', 
+                          style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           )),
       ],

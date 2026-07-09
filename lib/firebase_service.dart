@@ -137,6 +137,14 @@ class FirebaseService {
         .map((snap) => snap.docs.map((doc) => UserModel.fromMap(doc.data(), doc.id)).toList());
   }
 
+  Stream<List<LogModel>> streamAllLogsForMentor(String mentorId, List<String> studentIds) {
+    if (studentIds.isEmpty) return Stream.value([]);
+    return _db.collection('logs')
+        .where('studentId', whereIn: studentIds)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => LogModel.fromMap(doc.data(), doc.id)).toList());
+  }
+
   Stream<List<UserModel>> streamAssignedStudents(String mentorId) {
     return _db.collection('users')
         .where('role', isEqualTo: 'student')
