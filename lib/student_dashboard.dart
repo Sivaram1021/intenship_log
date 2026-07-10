@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'models.dart';
 import 'firebase_service.dart';
 import 'pdf_service.dart';
@@ -282,14 +284,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
           )
         else
           ...taskList.map((task) => InkWell(
-            onTap: isCompleted ? null : () async {
-              await _ds.updateTaskStatus(task.id, 'completed');
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('✅ Task marked as completed. Milestone updated.'))
-                );
-              }
-            },
+            onTap: isCompleted 
+              ? (task.submissionUrl != null ? () => _viewSubmission(task) : null)
+              : () => _showTaskSubmissionDialog(context, task),
             borderRadius: BorderRadius.circular(16),
             child: Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -316,12 +313,119 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       ],
                     ),
                   ),
+                  if (isCompleted && task.submissionUrl != null)
+                    const Icon(Icons.attachment_rounded, size: 18, color: Color(0xFF4F46E5)),
+                  if (!isCompleted)
+                    const Icon(Icons.cloud_upload_outlined, size: 18, color: Colors.blueGrey),
                 ],
               ),
             ),
           )),
       ],
     );
+  }
+
+  void _showTaskSubmissionDialog(BuildContext context, TaskModel task) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('🚀 SUBMIT TASK: ${task.title}', 
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), letterSpacing: 1)),
+            const SizedBox(height: 24),
+            _submissionOptionTile(
+              context,
+              icon: Icons.image_outlined,
+              title: 'Upload Image / Screenshot',
+              onTap: () => _handleTaskUpload(context, task, 'image'),
+            ),
+            _submissionOptionTile(
+              context,
+              icon: Icons.file_present_rounded,
+              title: 'Upload Document / File',
+              onTap: () => _handleTaskUpload(context, task, 'file'),
+            ),
+            _submissionOptionTile(
+              context,
+              icon: Icons.folder_zip_outlined,
+              title: 'Upload Folder (Zip Format)',
+              onTap: () => _handleTaskUpload(context, task, 'folder'),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _submissionOptionTile(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap}) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(10)),
+        child: Icon(icon, color: const Color(0xFF4F46E5), size: 20),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+      onTap: onTap,
+    );
+  }
+
+  void _handleTaskUpload(BuildContext context, TaskModel task, String type) async {
+    Navigator.pop(context); // Close sheet
+    
+    File? file;
+    if (type == 'image') {
+      final XFile? picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (picked != null) file = File(picked.path);
+    } else {
+      FilePickerResult? result = await FilePicker.platform.pickFiles();
+      if (result != null) file = File(result.files.single.path!);
+    }
+
+    if (file == null) return;
+
+    // Show loading
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      String url = await _ds.uploadTaskFile(task.id, file, type);
+      await _ds.updateTaskStatus(task.id, 'completed', url: url, type: type);
+      
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('🎉 Task submitted and marked as completed!'))
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+      }
+    }
+  }
+
+  void _viewSubmission(TaskModel task) async {
+    if (task.submissionUrl != null) {
+      final Uri url = Uri.parse(task.submissionUrl!);
+      if (!await launchUrl(url)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open submission link.')));
+        }
+      }
+    }
   }
 
   void _showPdfOptions(BuildContext context, List<LogModel> logs) {

@@ -1,12 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'dart:io';
 import 'models.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  // ... (signUp, signInWithGoogle, etc. remain the same)
 
   Future<UserCredential?> signUp(String email, String password, String name, String role, {String? mentorId}) async {
     UserCredential? creds;
@@ -115,8 +120,19 @@ class FirebaseService {
     await _db.collection('tasks').add(task.toMap());
   }
 
-  Future<void> updateTaskStatus(String taskId, String status) async {
-    await _db.collection('tasks').doc(taskId).update({'status': status});
+  Future<void> updateTaskStatus(String taskId, String status, {String? url, String? type}) async {
+    Map<String, dynamic> data = {'status': status};
+    if (url != null) data['submissionUrl'] = url;
+    if (type != null) data['submissionType'] = type;
+    await _db.collection('tasks').doc(taskId).update(data);
+  }
+
+  Future<String> uploadTaskFile(String taskId, File file, String type) async {
+    String fileName = '${taskId}_${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
+    Reference ref = _storage.ref().child('submissions/$taskId/$fileName');
+    UploadTask uploadTask = ref.putFile(file);
+    TaskSnapshot snapshot = await uploadTask;
+    return await snapshot.ref.getDownloadURL();
   }
 
   Stream<List<TaskModel>> streamStudentTasks(String studentId) {

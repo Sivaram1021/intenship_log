@@ -9,13 +9,14 @@ plugins {
 
 configure<ApplicationExtension> {
     namespace = "com.example.intenship_log"
-    compileSdk = 36 // ✅ UPDATED: Changed from 34 to 36 as requested by your plugins
+    compileSdk = 36 // ✅ Compiles against Android 16 (SDK 36) to bypass checkDebugAarMetadata errors
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
 
+    // ✅ Modern task-based compilerOptions block avoids jvmTarget compilation failures
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
@@ -25,9 +26,9 @@ configure<ApplicationExtension> {
     defaultConfig {
         applicationId = "com.example.intenship_log"
         minSdk = flutter.minSdkVersion
-        targetSdk = 36 // ✅ UPDATED: Raised to match compileSdk 36
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 36 // ✅ Matches targetSdk with compileSdk
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {

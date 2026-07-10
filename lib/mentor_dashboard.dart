@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'models.dart';
 import 'firebase_service.dart';
 
@@ -21,8 +22,8 @@ class _MentorDashboardState extends State<MentorDashboard> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
-        title: const Text('👔 SUPERVISOR OPERATIONS CONSOLE', 
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
+        title: const Text('👔 SUPERVISOR OPERATIONS CONSOLE',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
         actions: [
           TextButton.icon(
             onPressed: () => _ds.signOut(),
@@ -37,67 +38,70 @@ class _MentorDashboardState extends State<MentorDashboard> {
         builder: (context, studentSnapshot) {
           if (studentSnapshot.hasError) return Center(child: Text('Database Error: ${studentSnapshot.error}'));
           if (!studentSnapshot.hasData) return const Center(child: CircularProgressIndicator());
-          
+
           final students = studentSnapshot.data!;
 
           return StreamBuilder<List<LogModel>>(
-            stream: _ds.streamAllLogsForMentor(widget.mentor.uid, students.map((s) => s.uid).toList()),
-            builder: (context, logSnapshot) {
-              int pendingReviews = 0;
-              if (logSnapshot.hasData) {
-                pendingReviews = logSnapshot.data!.where((l) => l.mentorNotes.isEmpty).length;
-              }
+              stream: _ds.streamAllLogsForMentor(widget.mentor.uid, students.map((s) => s.uid).toList()),
+              builder: (context, logSnapshot) {
+                int pendingReviews = 0;
+                if (logSnapshot.hasData) {
+                  pendingReviews = logSnapshot.data!.where((l) => l.mentorNotes.isEmpty).length;
+                }
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('📊 COHORT ANALYTICS SUMMARY', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: Colors.blueGrey)),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(child: _analyticsCard('👥 ${students.length} Active Interns', const Color(0xFFF1F5F9))),
-                        const SizedBox(width: 12),
-                        Expanded(child: _analyticsCard('⚠️ $pendingReviews Pending Reviews', const Color(0xFFFFF7ED))),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-                    const Text('⚙️ GLOBAL MANAGEMENT TOOLS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: Colors.blueGrey)),
-                    const SizedBox(height: 12),
-                    InkWell(
-                      onTap: () => _showTaskDirectiveEngine(context, students),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E293B),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 10, offset: const Offset(0, 4))],
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 20),
-                            SizedBox(width: 12),
-                            Text('🚀 Task Directive Engine (Batch Milestone Deploy)',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                          ],
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('📊 COHORT ANALYTICS SUMMARY', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: Colors.blueGrey)),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _analyticsCard('👥 ${students.length} Active Interns', const Color(0xFFF1F5F9))),
+                          const SizedBox(width: 12),
+                          Expanded(child: _analyticsCard('⚠️ $pendingReviews Pending Reviews', const Color(0xFFFFF7ED))),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      const Text('⚙️ GLOBAL MANAGEMENT TOOLS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: Colors.blueGrey)),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: () => _showTaskDirectiveEngine(context, students),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E293B),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 10, offset: const Offset(0, 4))],
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 20),
+                              SizedBox(width: 12),
+                              Flexible(
+                                child: Text('🚀 Task Directive Engine (Batch Milestone Deploy)',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 32),
-                    const Text('👥 RISK-ASSESSMENT & AUDIT ROSTER', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: Colors.blueGrey)),
-                    const SizedBox(height: 16),
-                    if (students.isEmpty)
-                      _buildEmptyRoster()
-                    else
-                      ...students.map((student) => _buildStudentRosterCard(student)),
-                    const SizedBox(height: 40),
-                  ],
-                ),
-              );
-            }
+                      const SizedBox(height: 32),
+                      const Text('👥 RISK-ASSESSMENT & AUDIT ROSTER', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: Colors.blueGrey)),
+                      const SizedBox(height: 16),
+                      if (students.isEmpty)
+                        _buildEmptyRoster()
+                      else
+                        ...students.map((student) => _buildStudentRosterCard(student)),
+                      const SizedBox(height: 40),
+                    ],
+                  ),
+                );
+              }
           );
         },
       ),
@@ -106,13 +110,13 @@ class _MentorDashboardState extends State<MentorDashboard> {
 
   Widget _analyticsCard(String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.blueGrey[50]!),
       ),
-      child: Text(label, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF1E293B))),
+      child: Text(label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF1E293B))),
     );
   }
 
@@ -134,7 +138,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
   }
 
   Widget _buildStudentRosterCard(UserModel student) {
-    bool isOptimal = student.name.length % 2 == 0; 
+    bool isOptimal = student.name.length % 2 == 0;
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 16),
@@ -149,25 +153,25 @@ class _MentorDashboardState extends State<MentorDashboard> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(student.name, 
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1E293B))),
+                  child: Text(student.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1E293B))),
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: isOptimal ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(isOptimal ? '[🔒 SHA-256 VERIFIED]' : '[⚠️ VELOCITY DROP]', 
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isOptimal ? Colors.green[700] : Colors.red[700])),
+                  child: Text(isOptimal ? '[🔒 SHA-256 VERIFIED]' : '[⚠️ VELOCITY DROP]',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isOptimal ? Colors.green[700] : Colors.red[700])),
                 )
               ],
             ),
             const SizedBox(height: 4),
-            Text('Track: ${student.specialization ?? "General"} | 💎 Velocity: ${isOptimal ? "Optimal" : "Sluggish Performance"}', 
-              style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w600)),
+            Text('Track: ${student.specialization ?? "General"} | 💎 Velocity: ${isOptimal ? "Optimal" : "Sluggish Performance"}',
+                style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w600)),
             const Divider(height: 32),
             Row(
               children: [
@@ -200,7 +204,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
         decoration: BoxDecoration(
           border: Border.all(color: color.withAlpha(50)),
           borderRadius: BorderRadius.circular(12),
@@ -208,9 +212,16 @@ class _MentorDashboardState extends State<MentorDashboard> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 10.5),
+              ),
+            ),
           ],
         ),
       ),
@@ -256,89 +267,97 @@ class _TaskDirectiveEngineState extends State<TaskDirectiveEngine> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.only(left: 32, right: 32, top: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Expanded(
-                    child: Text('🚀 TASK DIRECTIVE ENGINE', 
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
-                  ),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, size: 20, color: Colors.blueGrey)),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _engineLabel('🎯 1. CHOOSE TARGET STUDENT'),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blueGrey[50]!)),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<UserModel>(
-                    value: _selectedStudent,
-                    isExpanded: true,
-                    items: widget.students.map((s) => DropdownMenuItem(
-                  value: s,
-                  child: Text('${s.name} (${s.specialization ?? "General"})', 
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                )).toList(),
-                    onChanged: (v) => setState(() => _selectedStudent = v),
-                  ),
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: screenHeight * 0.85, // Safety parameter to prevent full-screen overflow
+      ),
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 32, right: 32, top: 24, bottom: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                      child: Text('🚀 TASK DIRECTIVE ENGINE',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
+                    ),
+                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, size: 20, color: Colors.blueGrey)),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 24),
-              _engineLabel('📝 2. SPRINT OBJECTIVE TITLE'),
-              TextField(
-                controller: _objectiveCtrl,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                decoration: InputDecoration(
-                  hintText: 'e.g., Integrate Geolocator Matrix Camera',
-                  hintStyle: TextStyle(color: Colors.blueGrey[200]),
-                  filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                  contentPadding: const EdgeInsets.all(16),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _engineLabel('🗓️ 3. MILESTONE DEADLINE'),
-              InkWell(
-                onTap: () async {
-                  final picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime.now(), lastDate: DateTime(2030));
-                  if (picked != null) setState(() => _selectedDate = picked);
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(16),
+                const SizedBox(height: 20),
+                _engineLabel('🎯 1. CHOOSE TARGET STUDENT'),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blueGrey[50]!)),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_month_rounded, size: 18, color: Color(0xFF4F46E5)),
-                      const SizedBox(width: 12),
-                      Text(DateFormat('MMMM dd, yyyy').format(_selectedDate), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
-                    ],
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<UserModel>(
+                      value: _selectedStudent,
+                      isExpanded: true,
+                      items: widget.students.map((s) => DropdownMenuItem(
+                        value: s,
+                        child: Text('${s.name} (${s.specialization ?? "General"})',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      )).toList(),
+                      onChanged: (v) => setState(() => _selectedStudent = v),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isDeploying ? null : _handleDeploy,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                  child: _isDeploying ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2) : const Text('🚀 Deploy Task', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+                const SizedBox(height: 20),
+                _engineLabel('📝 2. SPRINT OBJECTIVE TITLE'),
+                TextField(
+                  controller: _objectiveCtrl,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  decoration: InputDecoration(
+                    hintText: 'e.g., Integrate Geolocator Matrix Camera',
+                    hintStyle: TextStyle(color: Colors.blueGrey[200]),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.all(16),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 40),
-            ],
+                const SizedBox(height: 20),
+                _engineLabel('🗓️ 3. MILESTONE DEADLINE'),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime.now(), lastDate: DateTime(2030));
+                    if (picked != null) setState(() => _selectedDate = picked);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blueGrey[50]!)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_month_rounded, size: 18, color: Color(0xFF4F46E5)),
+                        const SizedBox(width: 12),
+                        Text(DateFormat('MMMM dd, yyyy').format(_selectedDate), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isDeploying ? null : _handleDeploy,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                    child: _isDeploying ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2) : const Text('🚀 Deploy Task', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -374,88 +393,168 @@ class StudentDetailInspectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final FirebaseService ds = FirebaseService();
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(elevation: 0, backgroundColor: Colors.white, title: Text('Evaluation: ${student.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))),
-      body: StreamBuilder<List<LogModel>>(
-        stream: ds.streamStudentLogs(student.uid),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final logs = snapshot.data!;
-          if (logs.isEmpty) return const Center(child: Text('No active submissions.', style: TextStyle(color: Colors.blueGrey)));
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: logs.length,
-            itemBuilder: (context, idx) {
-              final log = logs[idx];
-              final feedbackController = TextEditingController();
-              return Card(
-                elevation: 0,
-                margin: const EdgeInsets.only(bottom: 12),
-                color: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.blueGrey[50]!)),
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(DateFormat('dd MMMM yyyy').format(log.date), 
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF4F46E5))),
-                          ),
-                          const SizedBox(width: 8),
-                          Text('${log.hoursWorked} hrs', 
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                        ],
-                      ),
-                      const Divider(height: 32),
-                      Text('Tasks Executed:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
-                      const SizedBox(height: 4),
-                      Text(log.tasksDone, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-                      const SizedBox(height: 16),
-                      Text('Learning Metrics:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
-                      const SizedBox(height: 4),
-                      Text(log.learnings, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-                      const SizedBox(height: 24),
-                      const Text('Review Note / Directive:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: feedbackController,
-                        decoration: InputDecoration(
-                          hintText: log.mentorNotes.isEmpty ? 'Commit evaluation note...' : log.mentorNotes,
-                          hintStyle: TextStyle(fontSize: 13, color: log.mentorNotes.isEmpty ? Colors.blueGrey[200] : const Color(0xFF1E293B)),
-                          filled: true,
-                          fillColor: const Color(0xFFF8FAFC),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: () {
-                            if (feedbackController.text.isNotEmpty) {
-                              ds.addMentorFeedback(log.id, feedbackController.text);
-                              feedbackController.clear();
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note committed.')));
-                            }
-                          },
-                          style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF4F46E5)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                          child: const Text('Commit Review Note', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4F46E5))),
-                        ),
-                      )
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          title: Text('Audit: ${student.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+          bottom: const TabBar(
+            labelColor: Color(0xFF4F46E5),
+            unselectedLabelColor: Colors.blueGrey,
+            indicatorColor: Color(0xFF4F46E5),
+            tabs: [
+              Tab(text: 'Work Logs', icon: Icon(Icons.history_rounded)),
+              Tab(text: 'Task Milestones', icon: Icon(Icons.rocket_launch_rounded)),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildLogsTab(ds),
+            _buildTasksTab(ds, context),
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _buildLogsTab(FirebaseService ds) {
+    return StreamBuilder<List<LogModel>>(
+      stream: ds.streamStudentLogs(student.uid),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final logs = snapshot.data!;
+        if (logs.isEmpty) return const Center(child: Text('No active work logs.', style: TextStyle(color: Colors.blueGrey)));
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: logs.length,
+          itemBuilder: (context, idx) {
+            final log = logs[idx];
+            final feedbackController = TextEditingController();
+            return Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 12),
+              color: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.blueGrey[50]!)),
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(DateFormat('dd MMMM yyyy').format(log.date),
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF4F46E5))),
+                        ),
+                        const SizedBox(width: 8),
+                        Text('${log.hoursWorked} hrs',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                      ],
+                    ),
+                    const Divider(height: 32),
+                    const Text('Tasks Executed:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
+                    const SizedBox(height: 4),
+                    Text(log.tasksDone, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                    const SizedBox(height: 16),
+                    const Text('Learning Metrics:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
+                    const SizedBox(height: 4),
+                    Text(log.learnings, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                    const SizedBox(height: 24),
+                    const Text('Review Note / Directive:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: feedbackController,
+                      decoration: InputDecoration(
+                        hintText: log.mentorNotes.isEmpty ? 'Commit evaluation note...' : log.mentorNotes,
+                        hintStyle: TextStyle(fontSize: 13, color: log.mentorNotes.isEmpty ? Colors.blueGrey[200] : const Color(0xFF1E293B)),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          if (feedbackController.text.isNotEmpty) {
+                            ds.addMentorFeedback(log.id, feedbackController.text);
+                            feedbackController.clear();
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note committed.')));
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF4F46E5)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        child: const Text('Commit Review Note', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4F46E5))),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTasksTab(FirebaseService ds, BuildContext context) {
+    return StreamBuilder<List<TaskModel>>(
+      stream: ds.streamStudentTasks(student.uid),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final tasks = snapshot.data!;
+        if (tasks.isEmpty) return const Center(child: Text('No tasks assigned yet.', style: TextStyle(color: Colors.blueGrey)));
+        
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: tasks.length,
+          itemBuilder: (context, idx) {
+            final task = tasks[idx];
+            bool isCompleted = task.status == 'completed';
+            
+            return Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 12),
+              color: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.blueGrey[50]!)),
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(16),
+                leading: Icon(isCompleted ? Icons.check_circle_rounded : Icons.pending_actions_rounded, 
+                  color: isCompleted ? Colors.green : Colors.orange),
+                title: Text(task.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Due: ${DateFormat('dd MMM').format(task.dueDate)}', style: const TextStyle(fontSize: 12)),
+                    if (isCompleted) 
+                      Text('Submitted: ${task.submissionType?.toUpperCase()}', 
+                        style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold, fontSize: 11)),
+                  ],
+                ),
+                trailing: isCompleted && task.submissionUrl != null
+                  ? IconButton(
+                      icon: const Icon(Icons.open_in_new_rounded, color: Color(0xFF4F46E5)),
+                      onPressed: () => _openSubmission(task.submissionUrl!),
+                    )
+                  : const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.blueGrey),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _openSubmission(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (!await launchUrl(uri)) {
+      // Handle error
+    }
   }
 }

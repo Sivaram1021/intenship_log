@@ -102,6 +102,8 @@ class TaskModel {
   final String description;
   final DateTime dueDate;
   final String status; // 'pending' or 'completed'
+  final String? submissionUrl;
+  final String? submissionType; // 'file', 'image', 'link'
 
   TaskModel({
     required this.id,
@@ -111,6 +113,8 @@ class TaskModel {
     required this.description,
     required this.dueDate,
     required this.status,
+    this.submissionUrl,
+    this.submissionType,
   });
 
   factory TaskModel.fromMap(Map<String, dynamic> map, String id) {
@@ -122,6 +126,8 @@ class TaskModel {
       description: map['description'] ?? '',
       dueDate: (map['dueDate'] as Timestamp).toDate(),
       status: map['status'] ?? 'pending',
+      submissionUrl: map['submissionUrl'],
+      submissionType: map['submissionType'],
     );
   }
 
@@ -133,6 +139,8 @@ class TaskModel {
       'description': description,
       'dueDate': Timestamp.fromDate(dueDate),
       'status': status,
+      'submissionUrl': submissionUrl,
+      'submissionType': submissionType,
     };
   }
 }
