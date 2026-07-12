@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'firebase_service.dart';
 import 'models.dart';
 import 'student_dashboard.dart';
@@ -72,9 +74,16 @@ class AuthGateway extends StatelessWidget {
   }
 }
 
-class RoleSelectionScreen extends StatelessWidget {
+class RoleSelectionScreen extends StatefulWidget {
   final User firebaseUser;
   const RoleSelectionScreen({super.key, required this.firebaseUser});
+
+  @override
+  State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
+}
+
+class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -103,35 +112,55 @@ class RoleSelectionScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     const Text('To configure your dashboard, please specify your role.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 16)),
                     const Spacer(),
-                    _roleCard(
-                      context,
-                      title: 'Student / Intern',
-                      desc: 'Log daily activities and track hours.',
-                      icon: Icons.school_rounded,
-                      onTap: () async {
-                        await ds.updateProfile(firebaseUser.uid, {
-                          'name': firebaseUser.displayName ?? 'New Student',
-                          'email': firebaseUser.email,
-                          'role': 'student',
-                          'mentorIds': [],
-                        });
-                      }
-                    ),
-                    const SizedBox(height: 20),
-                    _roleCard(
-                      context,
-                      title: 'Mentor / Supervisor',
-                      desc: 'Review intern logs and provide feedback.',
-                      icon: Icons.admin_panel_settings_rounded,
-                      onTap: () async {
-                        await ds.updateProfile(firebaseUser.uid, {
-                          'name': firebaseUser.displayName ?? 'New Mentor',
-                          'email': firebaseUser.email,
-                          'role': 'mentor',
-                          'mentorIds': [],
-                        });
-                      }
-                    ),
+                    if (_isLoading)
+                      const CircularProgressIndicator(color: Colors.white)
+                    else ...[
+                      _roleCard(
+                        context,
+                        title: 'Student / Intern',
+                        desc: 'Log daily activities and track hours.',
+                        icon: Icons.school_rounded,
+                        onTap: () async {
+                          setState(() => _isLoading = true);
+                          try {
+                            await ds.updateProfile(widget.firebaseUser.uid, {
+                              'name': widget.firebaseUser.displayName ?? widget.firebaseUser.email?.split('@').first ?? 'New Student',
+                              'email': widget.firebaseUser.email,
+                              'role': 'student',
+                              'mentorIds': [],
+                            });
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save role: $e')));
+                              setState(() => _isLoading = false);
+                            }
+                          }
+                        }
+                      ),
+                      const SizedBox(height: 20),
+                      _roleCard(
+                        context,
+                        title: 'Mentor / Supervisor',
+                        desc: 'Review intern logs and provide feedback.',
+                        icon: Icons.admin_panel_settings_rounded,
+                        onTap: () async {
+                          setState(() => _isLoading = true);
+                          try {
+                            await ds.updateProfile(widget.firebaseUser.uid, {
+                              'name': widget.firebaseUser.displayName ?? widget.firebaseUser.email?.split('@').first ?? 'New Mentor',
+                              'email': widget.firebaseUser.email,
+                              'role': 'mentor',
+                              'mentorIds': [],
+                            });
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save role: $e')));
+                              setState(() => _isLoading = false);
+                            }
+                          }
+                        }
+                      ),
+                    ],
                     const SizedBox(height: 40),
                   ],
                 ),
@@ -448,7 +477,11 @@ class _FinalizeProfileScreenState extends State<FinalizeProfileScreen> {
   final _companyController = TextEditingController();
   final _locationController = TextEditingController();
   final _specController = TextEditingController();
+  final _totalDaysController = TextEditingController(text: '30');
   final FirebaseService _db = FirebaseService();
+  DateTime _startDate = DateTime.now();
+  bool _isSaving = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -481,16 +514,62 @@ class _FinalizeProfileScreenState extends State<FinalizeProfileScreen> {
                       TextField(controller: _locationController, decoration: const InputDecoration(labelText: 'Office Location')),
                       const SizedBox(height: 16),
                       TextField(controller: _specController, decoration: const InputDecoration(labelText: 'Domain / Specialization')),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('Start Date: ${DateFormat('dd MMM yyyy').format(_startDate)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _startDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked != null) setState(() => _startDate = picked);
+                            },
+                            child: const Text('Pick Date'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _totalDaysController, 
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Total Internship Days (Duration)'),
+                      ),
                       const SizedBox(height: 40),
                       SizedBox(
                         width: double.infinity,
                         height: 56,
                         child: ElevatedButton(
-                          onPressed: () async {
-                            await _db.updateProfile(widget.user.uid, {'company': _companyController.text, 'location': _locationController.text, 'specialization': _specController.text});
+                          onPressed: _isSaving ? null : () async {
+                            if (_companyController.text.isEmpty || _locationController.text.isEmpty || _specController.text.isEmpty || _totalDaysController.text.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields.')));
+                              return;
+                            }
+                            setState(() => _isSaving = true);
+                            try {
+                              await _db.updateProfile(widget.user.uid, {
+                                'company': _companyController.text, 
+                                'location': _locationController.text, 
+                                'specialization': _specController.text,
+                                'startDate': Timestamp.fromDate(_startDate),
+                                'totalInternshipDays': int.tryParse(_totalDaysController.text) ?? 30,
+                              });
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                                setState(() => _isSaving = false);
+                              }
+                            }
                           },
                           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFDBA74), foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
-                          child: const Text('Save & Enter Workspace', style: TextStyle(fontWeight: FontWeight.w900)),
+                          child: _isSaving 
+                            ? const CircularProgressIndicator(color: Colors.black)
+                            : const Text('Save & Enter Workspace', style: TextStyle(fontWeight: FontWeight.w900)),
                         ),
                       ),
                     ],

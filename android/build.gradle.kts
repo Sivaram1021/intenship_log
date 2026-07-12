@@ -49,6 +49,7 @@ subprojects {
         afterEvaluate {
             configureAndroid()
         }
+        
     }
 }
 

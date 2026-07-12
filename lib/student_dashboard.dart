@@ -5,9 +5,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path/path.dart' as p;
 import 'models.dart';
 import 'firebase_service.dart';
 import 'pdf_service.dart';
+import 'chat_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   final UserModel student;
@@ -30,6 +33,10 @@ class _StudentDashboardState extends State<StudentDashboard> {
         title: const Text('🌐 MAIN DASHBOARD WORKSPACE', 
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF4F46E5)),
+            onPressed: () => _showChatSelector(context),
+          ),
           IconButton(
             icon: const Icon(Icons.account_circle_rounded, color: Color(0xFF4F46E5)),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(student: widget.student))),
@@ -94,12 +101,32 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       children: [
                         Expanded(
                           child: _utilityButton(
-                            label: 'Add Daily Work Log',
+                            label: 'Add Daily Log',
                             icon: Icons.add_circle_outline_rounded,
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => LogEntryScreen(student: widget.student))),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _utilityButton(
+                            label: 'Live Chat',
+                            icon: Icons.chat_bubble_outline_rounded,
+                            onTap: () => _showChatSelector(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _utilityButton(
+                            label: 'Attendance Matrix',
+                            icon: Icons.calendar_today_rounded,
+                            onTap: () => _showAttendanceSheet(context),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _utilityButton(
                             label: 'Export PDF Report',
@@ -283,49 +310,58 @@ class _StudentDashboardState extends State<StudentDashboard> {
             child: Text('No targets in this category.', style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontStyle: FontStyle.italic)),
           )
         else
-          ...taskList.map((task) => InkWell(
-            onTap: isCompleted 
-              ? (task.submissionUrl != null ? () => _viewSubmission(task) : null)
-              : () => _showTaskSubmissionDialog(context, task),
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.blueGrey[50]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(isCompleted ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, 
-                    color: isCompleted ? Colors.green : Colors.blueGrey),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(task.title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, 
-                          decoration: isCompleted ? TextDecoration.lineThrough : null, color: const Color(0xFF1E293B))),
-                        const SizedBox(height: 4),
-                        Text(isCompleted ? 'Approved by Supervisor' : 'Due: ${DateFormat('MMMM dd, yyyy').format(task.dueDate)}', 
-                          style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
-                      ],
+          ...taskList.map((task) {
+            bool isSubmitted = task.status == 'submitted';
+            bool isGraded = task.status == 'completed';
+
+            return InkWell(
+              onTap: isGraded
+                ? (task.submissionUrl != null ? () => _viewSubmission(task) : null)
+                : () => _showTaskSubmissionDialog(context, task, isResubmission: isSubmitted),
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.blueGrey[50]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(isGraded ? Icons.verified_rounded : (isSubmitted ? Icons.hourglass_top_rounded : Icons.pending_rounded), 
+                      color: isGraded ? Colors.green : (isSubmitted ? Colors.blue : Colors.orange)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(task.title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, 
+                            decoration: isGraded ? TextDecoration.lineThrough : null, color: const Color(0xFF1E293B))),
+                          const SizedBox(height: 4),
+                          if (isGraded && task.mark != null)
+                            Text('🎯 Evaluation Score: ${task.mark}/100', 
+                              style: const TextStyle(fontSize: 11, color: Color(0xFF4F46E5), fontWeight: FontWeight.w900))
+                          else
+                            Text(isSubmitted ? 'Pending Supervisor Evaluation' : 'Due: ${DateFormat('MMMM dd, yyyy').format(task.dueDate)}', 
+                              style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (isCompleted && task.submissionUrl != null)
-                    const Icon(Icons.attachment_rounded, size: 18, color: Color(0xFF4F46E5)),
-                  if (!isCompleted)
-                    const Icon(Icons.cloud_upload_outlined, size: 18, color: Colors.blueGrey),
-                ],
+                    if ((isGraded || isSubmitted) && task.submissionUrl != null)
+                      const Icon(Icons.attachment_rounded, size: 18, color: Color(0xFF4F46E5)),
+                    if (!isGraded && !isSubmitted)
+                      const Icon(Icons.cloud_upload_outlined, size: 18, color: Colors.blueGrey),
+                  ],
+                ),
               ),
-            ),
-          )),
+            );
+          }),
       ],
     );
   }
 
-  void _showTaskSubmissionDialog(BuildContext context, TaskModel task) {
+  void _showTaskSubmissionDialog(BuildContext context, TaskModel task, {bool isResubmission = false}) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -336,8 +372,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('🚀 SUBMIT TASK: ${task.title}', 
+            Text(isResubmission ? '♻️ RESUBMIT TASK: ${task.title}' : '🚀 SUBMIT TASK: ${task.title}', 
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), letterSpacing: 1)),
+            if (isResubmission)
+              const Padding(
+                padding: EdgeInsets.only(top: 8.0),
+                child: Text('You have already submitted once. Uploading a new file will replace your previous submission.', 
+                  style: TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold)),
+              ),
             const SizedBox(height: 24),
             _submissionOptionTile(
               context,
@@ -357,6 +399,16 @@ class _StudentDashboardState extends State<StudentDashboard> {
               title: 'Upload Folder (Zip Format)',
               onTap: () => _handleTaskUpload(context, task, 'folder'),
             ),
+            if (isResubmission)
+              _submissionOptionTile(
+                context,
+                icon: Icons.visibility_outlined,
+                title: 'View Current Submission',
+                onTap: () {
+                  Navigator.pop(context);
+                  _viewSubmission(task);
+                },
+              ),
             const SizedBox(height: 16),
           ],
         ),
@@ -378,42 +430,117 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   void _handleTaskUpload(BuildContext context, TaskModel task, String type) async {
-    Navigator.pop(context); // Close sheet
-    
     File? file;
-    if (type == 'image') {
-      final XFile? picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (picked != null) file = File(picked.path);
-    } else {
-      FilePickerResult? result = await FilePicker.platform.pickFiles();
-      if (result != null) file = File(result.files.single.path!);
+    try {
+      if (type == 'image') {
+        // High-speed optimization: 40% quality and 800px max
+        final XFile? picked = await ImagePicker().pickImage(
+          source: ImageSource.gallery, 
+          imageQuality: 40,
+          maxWidth: 800,
+          maxHeight: 800,
+        );
+        if (picked != null) file = File(picked.path);
+      } else {
+        FilePickerResult? result = await FilePicker.platform.pickFiles(
+          type: type == 'folder' ? FileType.custom : FileType.any,
+          allowedExtensions: type == 'folder' ? ['zip', 'rar', '7z'] : null,
+        );
+        if (result != null && result.files.single.path != null) {
+          file = File(result.files.single.path!);
+        }
+      }
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      return;
     }
 
     if (file == null) return;
+    if (context.mounted) Navigator.of(context).pop(); // Close selection menu
 
-    // Show loading
+    // Clear the wait: Show confirmation FIRST before the long upload process starts
     if (!context.mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (confirmContext) => AlertDialog(
+        title: const Text('🚀 Ready to Submit?'),
+        content: Text('Ready to upload and submit this evidence for supervisor evaluation?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(confirmContext).pop(), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.of(confirmContext).pop();
+              _performFastUpload(context, task, file!, type);
+            },
+            child: const Text('Confirm & Submit'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _performFastUpload(BuildContext context, TaskModel task, File file, String type) async {
+    final uploadProgress = ValueNotifier<double>(0.0);
+    
+    // Show non-blocking progress dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (loadingContext) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        content: ValueListenableBuilder<double>(
+          valueListenable: uploadProgress,
+          builder: (context, progress, child) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 12),
+                CircularProgressIndicator(
+                  value: progress > 0 ? progress : null, 
+                  color: const Color(0xFF4F46E5),
+                  strokeWidth: 6,
+                ),
+                const SizedBox(height: 24),
+                Text(progress > 0 ? 'Syncing: ${(progress * 100).toInt()}%' : 'Preparing cloud...', 
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            );
+          },
+        ),
+      ),
     );
 
     try {
-      String url = await _ds.uploadTaskFile(task.id, file, type);
-      await _ds.updateTaskStatus(task.id, 'completed', url: url, type: type);
+      String extension = p.extension(file.path);
+      String fileName = '${task.id}_${DateTime.now().millisecondsSinceEpoch}$extension';
+      final storageRef = FirebaseStorage.instance.ref().child('submissions/${task.id}/$fileName');
+      
+      final uploadTask = storageRef.putFile(file);
+      uploadTask.snapshotEvents.listen((snap) {
+        uploadProgress.value = snap.bytesTransferred / snap.totalBytes;
+      });
+
+      final snapshot = await uploadTask;
+      final url = await snapshot.ref.getDownloadURL();
+      
+      // Auto-finalize in Firestore
+      await _ds.updateTaskStatus(task.id, 'submitted', url: url, type: type);
       
       if (context.mounted) {
-        Navigator.pop(context); // Close loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('🎉 Task submitted and marked as completed!'))
-        );
+        Navigator.of(context).pop(); // Close Progress Dialog
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 Task successfully synced to workspace!')));
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.pop(context); // Close loading
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sync failed: $e')));
       }
+    } finally {
+      uploadProgress.dispose();
     }
   }
 
@@ -426,6 +553,67 @@ class _StudentDashboardState extends State<StudentDashboard> {
         }
       }
     }
+  }
+
+  void _showChatSelector(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('💬 SELECT SUPERVISOR TO CHAT', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1.1, color: Colors.blueGrey)),
+            const SizedBox(height: 16),
+            StreamBuilder<List<UserModel>>(
+              stream: _ds.streamAllMentors(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                final mentors = snapshot.data!.where((m) => widget.student.mentorIds.contains(m.uid)).toList();
+
+                if (mentors.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: Text('No linked supervisors available for live chat.', textAlign: TextAlign.center, style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
+                  );
+                }
+
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: mentors.length,
+                  itemBuilder: (context, index) {
+                    final mentor = mentors[index];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                      leading: const CircleAvatar(backgroundColor: Color(0xFFE0E7FF), child: Icon(Icons.person_outline_rounded, color: Color(0xFF4F46E5))),
+                      title: Text(mentor.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      subtitle: Text(mentor.specialization ?? 'Supervisor', style: const TextStyle(fontSize: 12)),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(currentUser: widget.student, otherUser: mentor)));
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAttendanceSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+      builder: (context) => AttendanceSheet(student: widget.student),
+    );
   }
 
   void _showPdfOptions(BuildContext context, List<LogModel> logs) {
@@ -1045,9 +1233,11 @@ class ProfileScreen extends StatelessWidget {
                         )
                       else
                         ...linkedMentors.map((m) => _mentorManagementCard(
+                              context: context,
                               mentor: m,
                               isLinked: true,
                               onAction: () => _handleRemoveMentor(context, user, m.uid),
+                              currentUser: user,
                             )),
 
                       const SizedBox(height: 32),
@@ -1066,6 +1256,7 @@ class ProfileScreen extends StatelessWidget {
                         )
                       else
                         ...availableMentors.map((m) => _mentorManagementCard(
+                              context: context,
                               mentor: m,
                               isLinked: false,
                               onAction: () async {
@@ -1074,6 +1265,7 @@ class ProfileScreen extends StatelessWidget {
                                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Connected to ${m.name}')));
                                 }
                               },
+                              currentUser: user,
                             )),
                       const SizedBox(height: 40),
                     ],
@@ -1087,7 +1279,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _mentorManagementCard({required UserModel mentor, required bool isLinked, required VoidCallback onAction}) {
+  Widget _mentorManagementCard({required BuildContext context, required UserModel mentor, required bool isLinked, required VoidCallback onAction, required UserModel currentUser}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(20),
@@ -1119,19 +1311,38 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton.icon(
-              onPressed: onAction,
-              icon: Icon(isLinked ? Icons.person_remove_rounded : Icons.person_add_rounded, size: 18),
-              label: Text(isLinked ? 'Disconnect Mentor' : 'Connect / Add Mentor', style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-              style: TextButton.styleFrom(
-                backgroundColor: isLinked ? const Color(0xFFFFE4E6) : const Color(0xFFEEF2FF),
-                foregroundColor: isLinked ? Colors.redAccent : const Color(0xFF4F46E5),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: onAction,
+                  icon: Icon(isLinked ? Icons.person_remove_rounded : Icons.person_add_rounded, size: 18),
+                  label: Text(isLinked ? 'Disconnect' : 'Connect', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    backgroundColor: isLinked ? const Color(0xFFFFE4E6) : const Color(0xFFEEF2FF),
+                    foregroundColor: isLinked ? Colors.redAccent : const Color(0xFF4F46E5),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
               ),
-            ),
+              if (isLinked) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(currentUser: currentUser, otherUser: mentor))),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                    label: const Text('Live Chat', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -1139,36 +1350,216 @@ class ProfileScreen extends StatelessWidget {
   }
 
   void _showEndInternship(BuildContext context) {
+    File? certificateFile;
+    final picker = ImagePicker();
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('🛑 Conclude Internship'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('To finalize your internship record, please upload your official completion certificate.'),
-            const SizedBox(height: 20),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('🛑 Conclude Internship'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('To finalize your internship record, please upload your official completion certificate.'),
+              const SizedBox(height: 20),
+              InkWell(
+                onTap: () async {
+                  final XFile? picked = await picker.pickImage(source: ImageSource.gallery);
+                  if (picked != null) {
+                    setDialogState(() => certificateFile = File(picked.path));
+                  }
+                },
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.blueGrey[100]!, style: BorderStyle.solid),
+                child: Container(
+                  width: double.infinity,
+                  padding: certificateFile == null ? const EdgeInsets.all(32) : EdgeInsets.zero,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.blueGrey[100]!, style: BorderStyle.solid),
+                  ),
+                  child: certificateFile == null
+                      ? const Column(
+                          children: [
+                            Icon(Icons.cloud_upload_outlined, size: 40, color: Color(0xFF4F46E5)),
+                            SizedBox(height: 12),
+                            Text('Upload Certificate', style: TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold)),
+                          ],
+                        )
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Image.file(certificateFile!, height: 150, width: double.infinity, fit: BoxFit.cover),
+                              Container(
+                                color: Colors.black26,
+                                padding: const EdgeInsets.all(8),
+                                child: const Icon(Icons.edit_rounded, color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
               ),
-              child: const Column(
-                children: [
-                  Icon(Icons.cloud_upload_outlined, size: 40, color: Color(0xFF4F46E5)),
-                  SizedBox(height: 12),
-                  Text('Upload Certificate', style: TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold)),
-                ],
-              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: certificateFile == null ? null : () {
+                // Handle final submission logic here
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Internship concluded successfully.')));
+              }, 
+              child: const Text('Submit & End'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Submit & End')),
+      ),
+    );
+  }
+}
+
+class AttendanceSheet extends StatefulWidget {
+  final UserModel student;
+  const AttendanceSheet({super.key, required this.student});
+
+  @override
+  State<AttendanceSheet> createState() => _AttendanceSheetState();
+}
+
+class _AttendanceSheetState extends State<AttendanceSheet> {
+  final FirebaseService _ds = FirebaseService();
+  bool _isMarking = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      maxChildSize: 0.9,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (context, scrollController) => StreamBuilder<List<AttendanceModel>>(
+        stream: _ds.streamStudentAttendance(widget.student.uid),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final attendanceList = snapshot.data!;
+          
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final hasMarkedToday = attendanceList.any((a) => a.date.isAtSameMomentAs(today));
+          
+          // Stats calculation
+          int presentDays = attendanceList.where((a) => a.isPresent).length;
+          int totalInternshipDays = widget.student.totalInternshipDays ?? 30;
+          DateTime startDate = widget.student.startDate ?? today;
+          
+          int daysElapsed = now.difference(startDate).inDays + 1;
+          if (daysElapsed < 1) daysElapsed = 1;
+          
+          int absentDays = daysElapsed - presentDays;
+          if (absentDays < 0) absentDays = 0;
+          
+          double attendancePercentage = (presentDays / daysElapsed) * 100;
+          if (attendancePercentage > 100) attendancePercentage = 100;
+
+          return Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: ListView(
+              controller: scrollController,
+              children: [
+                const Text('📅 ATTENDANCE MATRIX', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), letterSpacing: 1)),
+                const SizedBox(height: 24),
+                
+                // Attendance Stats Cards
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: 2,
+                  childAspectRatio: 1.5,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  children: [
+                    _statCard('Present', '$presentDays Days', Colors.green),
+                    _statCard('Absent', '$absentDays Days', Colors.redAccent),
+                    _statCard('Percentage', '${attendancePercentage.toStringAsFixed(1)}%', Colors.indigo),
+                    _statCard('Total Duration', '$totalInternshipDays Days', Colors.blueGrey),
+                  ],
+                ),
+                
+                const SizedBox(height: 32),
+                
+                if (!hasMarkedToday)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton.icon(
+                      onPressed: _isMarking ? null : () async {
+                        setState(() => _isMarking = true);
+                        await _ds.markAttendance(widget.student.uid, true);
+                        if (mounted) setState(() => _isMarking = false);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4F46E5),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      icon: _isMarking ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check_circle_outline),
+                      label: const Text('Mark as Present Today', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withAlpha(20),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.green.withAlpha(50)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.verified_rounded, color: Colors.green),
+                        SizedBox(width: 12),
+                        Text('Attendance Marked for Today', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  
+                const SizedBox(height: 32),
+                const Text('RECENT HISTORY', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 1.1)),
+                const SizedBox(height: 12),
+                ...attendanceList.take(10).map((a) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.calendar_today, size: 18, color: a.isPresent ? Colors.green : Colors.red),
+                  title: Text(DateFormat('dd MMMM yyyy').format(a.date), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  trailing: Text(a.isPresent ? 'Present' : 'Absent', style: TextStyle(color: a.isPresent ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                )),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _statCard(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withAlpha(10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withAlpha(30)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.w900)),
         ],
       ),
     );

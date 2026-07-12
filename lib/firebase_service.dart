@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'models.dart';
 
 class FirebaseService {
@@ -71,7 +72,7 @@ class FirebaseService {
   }
 
   Future<void> updateProfile(String uid, Map<String, dynamic> data) async {
-    await _db.collection('users').doc(uid).update(data);
+    await _db.collection('users').doc(uid).set(data, SetOptions(merge: true));
   }
 
   Future<void> addMentor(String studentUid, String mentorUid) async {
@@ -120,15 +121,17 @@ class FirebaseService {
     await _db.collection('tasks').add(task.toMap());
   }
 
-  Future<void> updateTaskStatus(String taskId, String status, {String? url, String? type}) async {
+  Future<void> updateTaskStatus(String taskId, String status, {String? url, String? type, int? mark}) async {
     Map<String, dynamic> data = {'status': status};
     if (url != null) data['submissionUrl'] = url;
     if (type != null) data['submissionType'] = type;
+    if (mark != null) data['mark'] = mark;
     await _db.collection('tasks').doc(taskId).update(data);
   }
 
   Future<String> uploadTaskFile(String taskId, File file, String type) async {
-    String fileName = '${taskId}_${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
+    String extension = p.extension(file.path);
+    String fileName = '${taskId}_${DateTime.now().millisecondsSinceEpoch}$extension';
     Reference ref = _storage.ref().child('submissions/$taskId/$fileName');
     UploadTask uploadTask = ref.putFile(file);
     TaskSnapshot snapshot = await uploadTask;
@@ -167,5 +170,56 @@ class FirebaseService {
         .where('mentorIds', arrayContains: mentorId)
         .snapshots()
         .map((snap) => snap.docs.map((doc) => UserModel.fromMap(doc.data(), doc.id)).toList());
+  }
+
+  Future<void> markAttendance(String studentId, bool isPresent) async {
+    DateTime now = DateTime.now();
+    DateTime today = DateTime(now.year, now.month, now.day);
+    
+    var snap = await _db.collection('attendance')
+        .where('studentId', isEqualTo: studentId)
+        .where('date', isEqualTo: Timestamp.fromDate(today))
+        .get();
+        
+    if (snap.docs.isEmpty) {
+      await _db.collection('attendance').add({
+        'studentId': studentId,
+        'date': Timestamp.fromDate(today),
+        'isPresent': isPresent,
+      });
+    }
+  }
+
+  Stream<List<AttendanceModel>> streamStudentAttendance(String studentId) {
+    return _db.collection('attendance')
+        .where('studentId', isEqualTo: studentId)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => AttendanceModel.fromMap(doc.data(), doc.id)).toList());
+  }
+
+  String getChatRoomId(String uid1, String uid2) {
+    List<String> ids = [uid1, uid2];
+    ids.sort();
+    return ids.join('_');
+  }
+
+  Future<void> sendMessage(String senderId, String receiverId, String message) async {
+    String roomId = getChatRoomId(senderId, receiverId);
+    await _db.collection('chat_rooms').doc(roomId).collection('messages').add({
+      'senderId': senderId,
+      'receiverId': receiverId,
+      'message': message,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Stream<List<ChatMessageModel>> streamMessages(String uid1, String uid2) {
+    String roomId = getChatRoomId(uid1, uid2);
+    return _db.collection('chat_rooms')
+        .doc(roomId)
+        .collection('messages')
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => ChatMessageModel.fromMap(doc.data(), doc.id)).toList());
   }
 }

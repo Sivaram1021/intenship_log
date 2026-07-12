@@ -9,6 +9,8 @@ class UserModel {
   final String? company;
   final String? location;
   final String? specialization;
+  final DateTime? startDate;
+  final int? totalInternshipDays;
 
   UserModel({
     required this.uid,
@@ -19,6 +21,8 @@ class UserModel {
     this.company,
     this.location,
     this.specialization,
+    this.startDate,
+    this.totalInternshipDays,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map, String id) {
@@ -31,6 +35,8 @@ class UserModel {
       company: map['company'],
       location: map['location'],
       specialization: map['specialization'],
+      startDate: map['startDate'] != null ? (map['startDate'] as Timestamp).toDate() : null,
+      totalInternshipDays: map['totalInternshipDays'],
     );
   }
 
@@ -43,6 +49,8 @@ class UserModel {
       'company': company,
       'location': location,
       'specialization': specialization,
+      'startDate': startDate != null ? Timestamp.fromDate(startDate!) : null,
+      'totalInternshipDays': totalInternshipDays,
     };
   }
 }
@@ -101,9 +109,10 @@ class TaskModel {
   final String title;
   final String description;
   final DateTime dueDate;
-  final String status; // 'pending' or 'completed'
+  final String status; // 'pending', 'submitted', 'completed'
   final String? submissionUrl;
-  final String? submissionType; // 'file', 'image', 'link'
+  final String? submissionType;
+  final int? mark; // Evaluation mark out of 100
 
   TaskModel({
     required this.id,
@@ -115,6 +124,7 @@ class TaskModel {
     required this.status,
     this.submissionUrl,
     this.submissionType,
+    this.mark,
   });
 
   factory TaskModel.fromMap(Map<String, dynamic> map, String id) {
@@ -128,6 +138,7 @@ class TaskModel {
       status: map['status'] ?? 'pending',
       submissionUrl: map['submissionUrl'],
       submissionType: map['submissionType'],
+      mark: map['mark'],
     );
   }
 
@@ -141,6 +152,73 @@ class TaskModel {
       'status': status,
       'submissionUrl': submissionUrl,
       'submissionType': submissionType,
+      'mark': mark,
+    };
+  }
+}
+
+class AttendanceModel {
+  final String id;
+  final String studentId;
+  final DateTime date;
+  final bool isPresent;
+
+  AttendanceModel({
+    required this.id,
+    required this.studentId,
+    required this.date,
+    this.isPresent = true,
+  });
+
+  factory AttendanceModel.fromMap(Map<String, dynamic> map, String id) {
+    return AttendanceModel(
+      id: id,
+      studentId: map['studentId'] ?? '',
+      date: (map['date'] as Timestamp).toDate(),
+      isPresent: map['isPresent'] ?? true,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'studentId': studentId,
+      'date': Timestamp.fromDate(date),
+      'isPresent': isPresent,
+    };
+  }
+}
+
+class ChatMessageModel {
+  final String id;
+  final String senderId;
+  final String receiverId;
+  final String message;
+  final DateTime timestamp;
+
+  ChatMessageModel({
+    required this.id,
+    required this.senderId,
+    required this.receiverId,
+    required this.message,
+    required this.timestamp,
+  });
+
+  factory ChatMessageModel.fromMap(Map<String, dynamic> map, String id) {
+    return ChatMessageModel(
+      id: id,
+      senderId: map['senderId'] ?? '',
+      receiverId: map['receiverId'] ?? '',
+      message: map['message'] ?? '',
+      timestamp: (map['timestamp'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'senderId': senderId,
+      'receiverId': receiverId,
+      'message': message,
+      'timestamp': Timestamp.fromDate(timestamp),
     };
   }
 }
