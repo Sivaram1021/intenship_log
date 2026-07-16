@@ -122,11 +122,15 @@ class FirebaseService {
   }
 
   Future<void> updateTaskStatus(String taskId, String status, {String? url, String? type, int? mark}) async {
+    if (taskId.isEmpty) throw Exception("Critical Error: Task Document ID is missing.");
+    
     Map<String, dynamic> data = {'status': status};
     if (url != null) data['submissionUrl'] = url;
     if (type != null) data['submissionType'] = type;
     if (mark != null) data['mark'] = mark;
-    await _db.collection('tasks').doc(taskId).update(data);
+    
+    // Using set with merge: true is more resilient than update
+    await _db.collection('tasks').doc(taskId).set(data, SetOptions(merge: true));
   }
 
   Future<String> uploadTaskFile(String taskId, File file, String type) async {

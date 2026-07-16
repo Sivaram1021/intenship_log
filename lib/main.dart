@@ -291,7 +291,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                   SizedBox(width: 8),
                   Text(
                     'intenship_log',
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                    style: TextStyle(color: Colors.tealAccent, fontSize: 16, fontWeight: FontWeight.w900),
                   ),
                 ],
               ),

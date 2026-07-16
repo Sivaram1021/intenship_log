@@ -109,7 +109,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: _utilityButton(
-                            label: 'Live Chat',
+                            label: 'Live Supervisor Chat',
                             icon: Icons.chat_bubble_outline_rounded,
                             onTap: () => _showChatSelector(context),
                           ),
@@ -144,12 +144,12 @@ class _StudentDashboardState extends State<StudentDashboard> {
                     const SizedBox(height: 20),
 
                     // PENDING TARGETS
-                    _buildTaskSection('⏳ PENDING TARGETS', tasks.where((t) => t.status != 'completed').toList(), false),
+                    _buildTaskSection('⏳ PENDING TARGETS', tasks.where((t) => t.status == 'pending').toList(), false),
                     
                     const SizedBox(height: 24),
 
-                    // COMPLETED TARGETS
-                    _buildTaskSection('✅ COMPLETED TARGETS', tasks.where((t) => t.status == 'completed').toList(), true),
+                    // COMPLETED / SUBMITTED TARGETS
+                    _buildTaskSection('✅ COMPLETED & SUBMITTED', tasks.where((t) => t.status != 'pending').toList(), true),
 
                     const SizedBox(height: 40),
                   ],
@@ -316,7 +316,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
             return InkWell(
               onTap: isGraded
-                ? (task.submissionUrl != null ? () => _viewSubmission(task) : null)
+                ? (task.submissionUrl != null 
+                    ? () => _viewSubmission(task) 
+                    : () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Milestone finalized by mentor without digital proof.'))))
                 : () => _showTaskSubmissionDialog(context, task, isResubmission: isSubmitted),
               borderRadius: BorderRadius.circular(16),
               child: Container(
@@ -433,7 +435,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
     File? file;
     try {
       if (type == 'image') {
-        // High-speed optimization: 40% quality and 800px max
         final XFile? picked = await ImagePicker().pickImage(
           source: ImageSource.gallery, 
           imageQuality: 40,
@@ -451,29 +452,40 @@ class _StudentDashboardState extends State<StudentDashboard> {
         }
       }
     } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Selection Error: $e')));
       return;
     }
 
     if (file == null) return;
-    if (context.mounted) Navigator.of(context).pop(); // Close selection menu
 
-    // Clear the wait: Show confirmation FIRST before the long upload process starts
+    // Immediately close any existing bottom sheets
+    if (context.mounted) Navigator.of(context).pop();
+
+    // Verification Dialog
     if (!context.mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (confirmContext) => AlertDialog(
-        title: const Text('🚀 Ready to Submit?'),
-        content: Text('Ready to upload and submit this evidence for supervisor evaluation?'),
+        title: const Text('🚀 Finalize Milestone?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Selected File:'),
+            Text(p.basename(file!.path), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4F46E5))),
+            const SizedBox(height: 12),
+            const Text('Would you like to start the secure cloud upload and notify your supervisor?'),
+          ],
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         actions: [
-          TextButton(onPressed: () => Navigator.of(confirmContext).pop(), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(confirmContext), child: const Text('Cancel')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), foregroundColor: Colors.white),
             onPressed: () {
-              Navigator.of(confirmContext).pop();
-              _performFastUpload(context, task, file!, type);
+              Navigator.pop(confirmContext);
+              _executeSecureUpload(context, task, file!, type);
             },
             child: const Text('Confirm & Submit'),
           ),
@@ -482,10 +494,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  void _performFastUpload(BuildContext context, TaskModel task, File file, String type) async {
+  void _executeSecureUpload(BuildContext context, TaskModel task, File file, String type) async {
+    if (task.id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Task ID is missing from local record.')));
+      return;
+    }
+
     final uploadProgress = ValueNotifier<double>(0.0);
     
-    // Show non-blocking progress dialog
+    // Show high-priority loading overlay
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -502,11 +519,13 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 CircularProgressIndicator(
                   value: progress > 0 ? progress : null, 
                   color: const Color(0xFF4F46E5),
-                  strokeWidth: 6,
+                  strokeWidth: 5,
                 ),
                 const SizedBox(height: 24),
-                Text(progress > 0 ? 'Syncing: ${(progress * 100).toInt()}%' : 'Preparing cloud...', 
+                Text(progress > 0 ? 'Cloud Sync: ${(progress * 100).toInt()}%' : 'Preparing Workspace Cloud...',
                   style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                const Text('Do not close the app during transfer.', style: TextStyle(fontSize: 10, color: Colors.blueGrey)),
               ],
             );
           },
@@ -515,29 +534,50 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
 
     try {
+      // 1. Upload to Firebase Storage
       String extension = p.extension(file.path);
-      String fileName = '${task.id}_${DateTime.now().millisecondsSinceEpoch}$extension';
-      final storageRef = FirebaseStorage.instance.ref().child('submissions/${task.id}/$fileName');
+      String fileName = 'SUBMISSION_${task.id}_${DateTime.now().millisecondsSinceEpoch}$extension';
+      final storageRef = FirebaseStorage.instance.ref().child('task_submissions/${task.studentId}/${task.id}/$fileName');
       
       final uploadTask = storageRef.putFile(file);
-      uploadTask.snapshotEvents.listen((snap) {
-        uploadProgress.value = snap.bytesTransferred / snap.totalBytes;
+      
+      // Update progress meter
+      final subscription = uploadTask.snapshotEvents.listen((snap) {
+        if (snap.totalBytes > 0) {
+          uploadProgress.value = snap.bytesTransferred / snap.totalBytes;
+        }
       });
 
       final snapshot = await uploadTask;
-      final url = await snapshot.ref.getDownloadURL();
+      await subscription.cancel();
+      final downloadUrl = await snapshot.ref.getDownloadURL();
       
-      // Auto-finalize in Firestore
-      await _ds.updateTaskStatus(task.id, 'submitted', url: url, type: type);
+      // 2. Update Firestore Status
+      // Use the service to ensure logic consistency
+      await _ds.updateTaskStatus(task.id, 'submitted', url: downloadUrl, type: type);
       
       if (context.mounted) {
-        Navigator.of(context).pop(); // Close Progress Dialog
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 Task successfully synced to workspace!')));
+        Navigator.of(context, rootNavigator: true).pop(); // Close Progress Overlay
+        
+        // Final Success feedback
+        showDialog(
+          context: context,
+          builder: (sContext) => AlertDialog(
+            title: const Text('🎉 Milestone Logged'),
+            content: const Text('Your submission has been securely synced. It is now waiting for supervisor verification and grading.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(sContext), child: const Text('Understood')),
+            ],
+          ),
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sync failed: $e')));
+        Navigator.of(context, rootNavigator: true).pop(); // Close Progress Overlay
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Sync Failed: $e'),
+          backgroundColor: Colors.redAccent,
+        ));
       }
     } finally {
       uploadProgress.dispose();
