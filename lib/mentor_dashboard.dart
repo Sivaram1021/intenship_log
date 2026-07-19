@@ -432,26 +432,34 @@ class _TaskDirectiveEngineState extends State<TaskDirectiveEngine> {
   }
 }
 
-class StudentDetailInspectionScreen extends StatelessWidget {
+class StudentDetailInspectionScreen extends StatefulWidget {
   final UserModel student;
   final UserModel mentor;
   const StudentDetailInspectionScreen({super.key, required this.student, required this.mentor});
 
   @override
+  State<StudentDetailInspectionScreen> createState() => _StudentDetailInspectionScreenState();
+}
+
+class _StudentDetailInspectionScreenState extends State<StudentDetailInspectionScreen> {
+  final FirebaseService ds = FirebaseService();
+  String? _gradingTaskId;
+  String? _reviewingLogId;
+
+  @override
   Widget build(BuildContext context) {
-    final FirebaseService ds = FirebaseService();
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
-        appBar: AppBar(
+          appBar: AppBar(
           elevation: 0,
           backgroundColor: Colors.white,
-          title: Text('Audit: ${student.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+          title: Text('Audit: ${widget.student.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
           actions: [
             IconButton(
               icon: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF4F46E5)),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(currentUser: mentor, otherUser: student))),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(currentUser: widget.mentor, otherUser: widget.student))),
             ),
             const SizedBox(width: 8),
           ],
@@ -479,16 +487,16 @@ class StudentDetailInspectionScreen extends StatelessWidget {
 
   Widget _buildAttendanceAuditTab(FirebaseService ds) {
     return StreamBuilder<List<AttendanceModel>>(
-      stream: ds.streamStudentAttendance(student.uid),
+      stream: ds.streamStudentAttendance(widget.student.uid),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final attendanceList = snapshot.data!;
         
         // Calculate stats
         int presentDays = attendanceList.where((a) => a.isPresent).length;
-        int totalDays = student.totalInternshipDays ?? 30;
+        int totalDays = widget.student.totalInternshipDays ?? 30;
         DateTime now = DateTime.now();
-        DateTime startDate = student.startDate ?? now;
+        DateTime startDate = widget.student.startDate ?? now;
         int daysElapsed = now.difference(startDate).inDays + 1;
         if (daysElapsed < 1) daysElapsed = 1;
         int absentDays = daysElapsed - presentDays;
@@ -554,7 +562,7 @@ class StudentDetailInspectionScreen extends StatelessWidget {
 
   Widget _buildLogsTab(FirebaseService ds) {
     return StreamBuilder<List<LogModel>>(
-      stream: ds.streamStudentLogs(student.uid),
+      stream: ds.streamStudentLogs(widget.student.uid),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final logs = snapshot.data!;
@@ -610,20 +618,43 @@ class StudentDetailInspectionScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          if (feedbackController.text.isNotEmpty) {
-                            ds.addMentorFeedback(log.id, feedbackController.text);
-                            feedbackController.clear();
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note committed.')));
-                          }
-                        },
-                        style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF4F46E5)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                        child: const Text('Commit Review Note', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4F46E5))),
-                      ),
-                    )
+                    _reviewingLogId == log.id
+                        ? const SizedBox(
+                            width: double.infinity,
+                            height: 48,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: Color(0xFF4F46E5),
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          )
+                        : SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                if (feedbackController.text.isNotEmpty) {
+                                  setState(() => _reviewingLogId = log.id);
+                                  final messenger = ScaffoldMessenger.of(context);
+                                  try {
+                                    await ds.addMentorFeedback(log.id, feedbackController.text);
+                                    feedbackController.clear();
+                                    if (mounted) {
+                                      messenger.showSnackBar(const SnackBar(content: Text('Note committed.')));
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      messenger.showSnackBar(SnackBar(content: Text('Failed to commit note: $e')));
+                                    }
+                                  } finally {
+                                    if (mounted) setState(() => _reviewingLogId = null);
+                                  }
+                                }
+                              },
+                              style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF4F46E5)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                              child: const Text('Commit Review Note', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4F46E5))),
+                            ),
+                          )
                   ],
                 ),
               ),
@@ -636,7 +667,7 @@ class StudentDetailInspectionScreen extends StatelessWidget {
 
   Widget _buildTasksTab(FirebaseService ds, BuildContext context) {
     return StreamBuilder<List<TaskModel>>(
-      stream: ds.streamStudentTasks(student.uid),
+      stream: ds.streamStudentTasks(widget.student.uid),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final tasks = snapshot.data!;
@@ -731,27 +762,47 @@ class StudentDetailInspectionScreen extends StatelessWidget {
                                       ),
                                     ),
                                     const SizedBox(width: 12),
-                                    ElevatedButton(
-                                      onPressed: () async {
-                                        int? mark = int.tryParse(markController.text);
-                                        if (mark != null && mark >= 0 && mark <= 100) {
-                                          await ds.updateTaskStatus(task.id, 'completed', mark: mark);
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Milestone evaluation committed.')));
-                                          }
-                                        } else {
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid mark between 0-100.')));
-                                          }
-                                        }
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF4F46E5),
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                      child: const Text('Grade'),
-                                    ),
+                                    _gradingTaskId == task.id
+                                        ? const SizedBox(
+                                            width: 48,
+                                            height: 40,
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                color: Color(0xFF4F46E5),
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          )
+                                        : ElevatedButton(
+                                            onPressed: () async {
+                                              int? mark = int.tryParse(markController.text);
+                                              if (mark != null && mark >= 0 && mark <= 100) {
+                                                setState(() => _gradingTaskId = task.id);
+                                                try {
+                                                  await ds.updateTaskStatus(task.id, 'completed', mark: mark);
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Milestone evaluation committed.')));
+                                                  }
+                                                } catch (e) {
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Grading failed: $e')));
+                                                  }
+                                                } finally {
+                                                  if (mounted) setState(() => _gradingTaskId = null);
+                                                }
+                                              } else {
+                                                if (context.mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid mark between 0-100.')));
+                                                }
+                                              }
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFF4F46E5),
+                                              foregroundColor: Colors.white,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            ),
+                                            child: const Text('Grade'),
+                                          ),
                                   ],
                                 ),
                               ],

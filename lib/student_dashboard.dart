@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as p;
 import 'models.dart';
 import 'firebase_service.dart';
@@ -22,6 +21,7 @@ class StudentDashboard extends StatefulWidget {
 
 class _StudentDashboardState extends State<StudentDashboard> {
   final FirebaseService _ds = FirebaseService();
+  bool _isUploading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -315,11 +315,13 @@ class _StudentDashboardState extends State<StudentDashboard> {
             bool isGraded = task.status == 'completed';
 
             return InkWell(
-              onTap: isGraded
-                ? (task.submissionUrl != null 
-                    ? () => _viewSubmission(task) 
-                    : () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Milestone finalized by mentor without digital proof.'))))
-                : () => _showTaskSubmissionDialog(context, task, isResubmission: isSubmitted),
+              onTap: _isUploading
+                ? null
+                : isGraded
+                  ? (task.submissionUrl != null 
+                      ? () => _viewSubmission(task) 
+                      : () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Milestone finalized by mentor without digital proof.'))))
+                  : () => _showTaskSubmissionDialog(context, task, isResubmission: isSubmitted),
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -458,13 +460,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
     if (file == null) return;
 
-    // Immediately close any existing bottom sheets
+    // Close the bottom sheet using its own context before it becomes invalid
     if (context.mounted) Navigator.of(context).pop();
 
+    // From here on, use State context (this.context) since the bottom sheet context is now stale
+    if (!mounted) return;
+
     // Verification Dialog
-    if (!context.mounted) return;
     showDialog(
-      context: context,
+      context: this.context,
       barrierDismissible: false,
       builder: (confirmContext) => AlertDialog(
         title: const Text('🚀 Finalize Milestone?'),
@@ -485,7 +489,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), foregroundColor: Colors.white),
             onPressed: () {
               Navigator.pop(confirmContext);
-              _executeSecureUpload(context, task, file!, type);
+              _executeSecureUpload(task, file!, type);
             },
             child: const Text('Confirm & Submit'),
           ),
@@ -494,93 +498,36 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  void _executeSecureUpload(BuildContext context, TaskModel task, File file, String type) async {
-    if (task.id.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Task ID is missing from local record.')));
+  void _executeSecureUpload(TaskModel task, File file, String type) async {
+    final String cleanTaskId = task.id.trim();
+    if (cleanTaskId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Task ID is missing.')));
       return;
     }
 
-    final uploadProgress = ValueNotifier<double>(0.0);
-    
-    // Show high-priority loading overlay
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (loadingContext) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        content: ValueListenableBuilder<double>(
-          valueListenable: uploadProgress,
-          builder: (context, progress, child) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 12),
-                CircularProgressIndicator(
-                  value: progress > 0 ? progress : null, 
-                  color: const Color(0xFF4F46E5),
-                  strokeWidth: 5,
-                ),
-                const SizedBox(height: 24),
-                Text(progress > 0 ? 'Cloud Sync: ${(progress * 100).toInt()}%' : 'Preparing Workspace Cloud...',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text('Do not close the app during transfer.', style: TextStyle(fontSize: 10, color: Colors.blueGrey)),
-              ],
-            );
-          },
-        ),
-      ),
-    );
+    if (_isUploading) return;
+    setState(() => _isUploading = true);
 
     try {
-      // 1. Upload to Firebase Storage
-      String extension = p.extension(file.path);
-      String fileName = 'SUBMISSION_${task.id}_${DateTime.now().millisecondsSinceEpoch}$extension';
-      final storageRef = FirebaseStorage.instance.ref().child('task_submissions/${task.studentId}/${task.id}/$fileName');
+      await _ds.updateTaskStatus(cleanTaskId, 'submitted', type: type);
       
-      final uploadTask = storageRef.putFile(file);
-      
-      // Update progress meter
-      final subscription = uploadTask.snapshotEvents.listen((snap) {
-        if (snap.totalBytes > 0) {
-          uploadProgress.value = snap.bytesTransferred / snap.totalBytes;
-        }
-      });
-
-      final snapshot = await uploadTask;
-      await subscription.cancel();
-      final downloadUrl = await snapshot.ref.getDownloadURL();
-      
-      // 2. Update Firestore Status
-      // Use the service to ensure logic consistency
-      await _ds.updateTaskStatus(task.id, 'submitted', url: downloadUrl, type: type);
-      
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop(); // Close Progress Overlay
-        
-        // Final Success feedback
-        showDialog(
-          context: context,
-          builder: (sContext) => AlertDialog(
-            title: const Text('🎉 Milestone Logged'),
-            content: const Text('Your submission has been securely synced. It is now waiting for supervisor verification and grading.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(sContext), child: const Text('Understood')),
-            ],
-          ),
-        );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Milestone submitted! Waiting for supervisor verification.'),
+          backgroundColor: Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+        ));
       }
     } catch (e) {
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop(); // Close Progress Overlay
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Sync Failed: $e'),
+          content: Text('Submission Failed: $e'),
           backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
         ));
       }
     } finally {
-      uploadProgress.dispose();
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
