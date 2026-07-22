@@ -143,7 +143,9 @@ class FirebaseService {
     Reference ref = _storage.ref().child('submissions/$taskId/$fileName');
     UploadTask uploadTask = ref.putFile(file);
     TaskSnapshot snapshot = await uploadTask;
-    return await snapshot.ref.getDownloadURL();
+    String url = await snapshot.ref.getDownloadURL();
+    await updateTaskStatus(taskId, 'submitted', url: url, type: type);
+    return url;
   }
 
   Stream<List<TaskModel>> streamStudentTasks(String studentId) {

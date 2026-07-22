@@ -509,7 +509,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
     setState(() => _isUploading = true);
 
     try {
-      await _ds.updateTaskStatus(cleanTaskId, 'submitted', type: type);
+      await _ds.uploadTaskFile(cleanTaskId, file, type);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
