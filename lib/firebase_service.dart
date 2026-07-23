@@ -1,15 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'models.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   // ... (signUp, signInWithGoogle, etc. remain the same)
@@ -121,7 +120,7 @@ class FirebaseService {
     await _db.collection('tasks').add(task.toMap());
   }
 
-  Future<void> updateTaskStatus(String taskId, String status, {String? url, String? type, int? mark}) async {
+  Future<void> updateTaskStatus(String taskId, String status, {String? url, String? type, int? mark, String? submissionData}) async {
     if (taskId.isEmpty) throw Exception("Task ID cannot be empty.");
     
     final Map<String, dynamic> data = {
@@ -132,20 +131,19 @@ class FirebaseService {
     if (url != null) data['submissionUrl'] = url;
     if (type != null) data['submissionType'] = type;
     if (mark != null) data['mark'] = mark;
+    if (submissionData != null) data['submissionData'] = submissionData;
     
-    // Explicit update to ensure the document exists
     await _db.collection('tasks').doc(taskId.trim()).update(data);
   }
 
   Future<String> uploadTaskFile(String taskId, File file, String type) async {
-    String extension = p.extension(file.path);
-    String fileName = '${taskId}_${DateTime.now().millisecondsSinceEpoch}$extension';
-    Reference ref = _storage.ref().child('submissions/$taskId/$fileName');
-    UploadTask uploadTask = ref.putFile(file);
-    TaskSnapshot snapshot = await uploadTask;
-    String url = await snapshot.ref.getDownloadURL();
-    await updateTaskStatus(taskId, 'submitted', url: url, type: type);
-    return url;
+    final bytes = await file.readAsBytes();
+    if (bytes.length > 500 * 1024) throw Exception('File too large (max 500KB)');
+    final b64 = base64Encode(bytes);
+    String ext = p.extension(file.path);
+    String submissionData = '$type|$ext|$b64';
+    await updateTaskStatus(taskId, 'submitted', type: type, submissionData: submissionData);
+    return 'stored in firestore';
   }
 
   Stream<List<TaskModel>> streamStudentTasks(String studentId) {

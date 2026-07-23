@@ -112,6 +112,7 @@ class TaskModel {
   final String status; // 'pending', 'submitted', 'completed'
   final String? submissionUrl;
   final String? submissionType;
+  final String? submissionData;
   final int? mark; // Evaluation mark out of 100
 
   TaskModel({
@@ -124,6 +125,7 @@ class TaskModel {
     required this.status,
     this.submissionUrl,
     this.submissionType,
+    this.submissionData,
     this.mark,
   });
 
@@ -138,6 +140,7 @@ class TaskModel {
       status: map['status'] ?? 'pending',
       submissionUrl: map['submissionUrl'],
       submissionType: map['submissionType'],
+      submissionData: map['submissionData'],
       mark: map['mark'],
     );
   }
@@ -152,6 +155,7 @@ class TaskModel {
       'status': status,
       'submissionUrl': submissionUrl,
       'submissionType': submissionType,
+      'submissionData': submissionData,
       'mark': mark,
     };
   }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -734,10 +735,10 @@ class _StudentDetailInspectionScreenState extends State<StudentDetailInspectionS
                                         style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11)),
                                   ],
                                 ),
-                                trailing: (isGraded || isSubmitted) && task.submissionUrl != null
+                                trailing: (isGraded || isSubmitted) && (task.submissionUrl != null || task.submissionData != null)
                                   ? IconButton(
                                       icon: const Icon(Icons.open_in_new_rounded, color: Color(0xFF4F46E5)),
-                                      onPressed: () => _openSubmission(task.submissionUrl!),
+                                      onPressed: () => _viewSubmission(context, task),
                                     )
                                   : null,
                               ),
@@ -819,10 +820,74 @@ class _StudentDetailInspectionScreenState extends State<StudentDetailInspectionS
     );
   }
 
+  void _viewSubmission(BuildContext context, TaskModel task) {
+    if (task.submissionData != null && task.submissionData!.isNotEmpty) {
+      _viewBase64Submission(context, task);
+    } else if (task.submissionUrl != null && task.submissionUrl!.isNotEmpty) {
+      _openSubmission(task.submissionUrl!);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No digital proof attached.')));
+    }
+  }
+
   void _openSubmission(String url) async {
     final Uri uri = Uri.parse(url);
-    if (!await launchUrl(uri)) {
-      // Handle error
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  void _viewBase64Submission(BuildContext context, TaskModel task) {
+    try {
+      final parts = task.submissionData!.split('|');
+      if (parts.length < 3) return;
+      final type = parts[0];
+      final ext = parts[1];
+      final b64 = parts.sublist(2).join('|');
+      final bytes = base64Decode(b64);
+
+      if (type == 'image') {
+        showDialog(
+          context: context,
+          builder: (ctx) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(10),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.black54,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Attached File: $ext (${(bytes.length / 1024).toStringAsFixed(1)} KB)'),
+            action: SnackBarAction(label: 'OK', onPressed: () {}),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error decoding proof: $e')));
     }
   }
 }

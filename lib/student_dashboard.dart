@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
 import 'package:path/path.dart' as p;
 import 'models.dart';
 import 'firebase_service.dart';
@@ -318,7 +321,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
               onTap: _isUploading
                 ? null
                 : isGraded
-                  ? (task.submissionUrl != null 
+                  ? (task.submissionUrl != null || task.submissionData != null
                       ? () => _viewSubmission(task) 
                       : () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Milestone finalized by mentor without digital proof.'))))
                   : () => _showTaskSubmissionDialog(context, task, isResubmission: isSubmitted),
@@ -352,7 +355,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         ],
                       ),
                     ),
-                    if ((isGraded || isSubmitted) && task.submissionUrl != null)
+                    if ((isGraded || isSubmitted) && (task.submissionUrl != null || task.submissionData != null))
                       const Icon(Icons.attachment_rounded, size: 18, color: Color(0xFF4F46E5)),
                     if (!isGraded && !isSubmitted)
                       const Icon(Icons.cloud_upload_outlined, size: 18, color: Colors.blueGrey),
@@ -531,14 +534,69 @@ class _StudentDashboardState extends State<StudentDashboard> {
     }
   }
 
-  void _viewSubmission(TaskModel task) async {
-    if (task.submissionUrl != null) {
-      final Uri url = Uri.parse(task.submissionUrl!);
-      if (!await launchUrl(url)) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open submission link.')));
-        }
+  void _viewSubmission(TaskModel task) {
+    if (task.submissionData != null && task.submissionData!.isNotEmpty) {
+      _viewBase64Submission(task);
+    } else if (task.submissionUrl != null && task.submissionUrl!.isNotEmpty) {
+      _openUrl(task.submissionUrl!);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No digital proof attached.')));
+    }
+  }
+
+  void _viewBase64Submission(TaskModel task) {
+    try {
+      final parts = task.submissionData!.split('|');
+      if (parts.length < 3) return;
+      final type = parts[0];
+      final ext = parts[1];
+      final b64 = parts.sublist(2).join('|');
+      final bytes = base64Decode(b64);
+
+      if (type == 'image') {
+        showDialog(
+          context: context,
+          builder: (ctx) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(10),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: InteractiveViewer(
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.black54,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Attached File: $ext (${(bytes.length / 1024).toStringAsFixed(1)} KB)')),
+        );
       }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error decoding proof: $e')));
+    }
+  }
+
+  void _openUrl(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
     }
   }
 
@@ -672,20 +730,62 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  void _generatePdf(BuildContext context, List<LogModel> filteredLogs, String type) {
+  void _generatePdf(BuildContext context, List<LogModel> filteredLogs, String type) async {
     if (filteredLogs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No logs found for the selected period.')));
       return;
     }
-    PdfService.generateAndShareReport(
-      studentName: widget.student.name,
-      studentEmail: widget.student.email,
-      company: widget.student.company,
-      location: widget.student.location,
-      specialization: widget.student.specialization,
-      logs: filteredLogs,
-      reportType: type,
+
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Color(0xFF4F46E5)),
+                SizedBox(height: 16),
+                Text('Generating Matrix Report...', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('This may take a few moments', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
+
+    try {
+      final pdfBytes = await PdfService.generateReportBytes(
+        studentName: widget.student.name,
+        studentEmail: widget.student.email,
+        company: widget.student.company,
+        location: widget.student.location,
+        specialization: widget.student.specialization,
+        logs: filteredLogs,
+        reportType: type,
+      );
+
+      if (context.mounted) Navigator.pop(context); // Close loading overlay IMMEDIATELY after generation
+
+      // Now show the PDF preview/print dialog
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdfBytes,
+        name: '${widget.student.name}_internship_report.pdf',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        // If error occurred, close the overlay if it's still there
+        Navigator.of(context, rootNavigator: true).pop(); 
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to generate report: $e'),
+          backgroundColor: Colors.redAccent,
+        ));
+      }
+    }
   }
 }
 
